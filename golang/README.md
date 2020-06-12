@@ -23,3 +23,20 @@ ubuntu@go-dev:~$ go get github.com/ruanbekker/drone-with-go
 ubuntu@go-dev:~$ drone-with-go
 hello, world
 ```
+
+Or using the Makefile:
+
+```
+$ make prepare # prepare : reads the public key from ~/.ssh/id_rsa.pub and replaces it in the cloud-init.yml
+$ make deploy
+```
+
+```
+$ multipass list
+Name                    State             IPv4             Image
+go-env                  Running           192.168.64.18    Ubuntu 18.04 LTS
+```
+
+```
+$ make destroy
+```
