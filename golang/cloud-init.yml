@@ -1,6 +1,6 @@
 #cloud-config
 ssh_authorized_keys:
-  - SSH_PUBLIC_STRING
+  - SSH_PUBLIC_KEY_STRING
 
 package_update: true
 
