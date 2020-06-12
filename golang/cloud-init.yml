@@ -1,1 +1,24 @@
+#cloud-config
+ssh_authorized_keys:
+  - SSH_PUBLIC_STRING
 
+package_update: true
+
+packages:
+ - gcc
+ - musl-dev
+ - git
+ - pkg-config i
+ - make
+ - libseccomp-dev
+ - jq
+
+runcmd:
+ - wget https://dl.google.com/go/go1.14.4.linux-amd64.tar.gz
+ - sudo tar -xf go1.14.4.linux-amd64.tar.gz -C /usr/local
+ - sudo chown -R root:root /usr/local/go
+ - rm -rf go1.14.4.*.tar.gz
+ - mkdir -p /home/ubuntu/go/bin /home/ubuntu/go/src
+ - echo 'export GOPATH=/home/ubuntu/go' >> /home/ubuntu/.bashrc
+ - echo 'export PATH=$PATH:$GOPATH/bin:/usr/local/go/bin' >> /home/ubuntu/.bashrc
+ - chown -R ubuntu:ubuntu /home/ubuntu
