@@ -1,0 +1,47 @@
+#cloud-config
+ssh_authorized_keys:
+  - SSH_PUBLIC_KEY_STRING
+
+package_update: true
+
+packages:
+ - unzip
+ - screen
+ - wget
+
+write_files:
+  - content: |-
+      [Unit]
+      Description=Loki
+      User=loki
+      Group=loki
+      Wants=network-online.target
+      After=network-online.target
+      [Service]
+      Type=simple
+      Restart=on-failure
+      ExecStart=/usr/local/bin/loki -config.file /etc/loki/loki-local-config.yaml
+      [Install]
+      WantedBy=multi-user.target
+
+    owner: root:root
+    path: /etc/systemd/system/loki.service
+    permissions: '0644'
+
+bootcmd:
+  - useradd --no-create-home --shell /bin/false loki
+  - mkdir /etc/loki
+  - chown -R loki:loki /etc/loki
+
+runcmd:
+ - for app in loki logcli promtail; do wget "https://github.com/grafana/loki/releases/download/v2.0.0/${app}-linux-amd64.zip"; done
+ - for app in loki logcli promtail; do unzip "${app}-linux-amd64.zip"; done
+ - for app in loki logcli promtail; do mv "${app}-linux-amd64" /usr/local/bin/${app}; done
+ - for app in loki logcli promtail; do rm -f "${app}-linux-amd64.zip"; done
+ - wget https://raw.githubusercontent.com/grafana/loki/v2.0.0/cmd/loki/loki-local-config.yaml
+ - mv ./loki-local-config.yaml /etc/loki/loki-local-config.yaml
+ - chown loki:loki /etc/loki/loki-local-config.yaml
+ - systemctl daemon-reload
+ - systemctl start loki
+ - sleep 5
+ - echo "this is a test" | promtail --stdin --client.url http://localhost:3100/loki/api/v1/push --client.external-labels=app=cli -server.disable
