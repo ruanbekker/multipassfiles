@@ -1,0 +1,98 @@
+#cloud-config
+# src:
+# https://github.com/aws/aws-codebuild-docker-images/blob/master/ubuntu/standard/4.0/Dockerfile
+ssh_authorized_keys:
+  - SSH_PUBLIC_KEY_STRING
+
+package_update: true
+
+packages:
+ - apt-transport-https
+ - gnupg
+ - ca-certificates
+ - wget
+ - apt-utils
+ - git
+ - software-properties-common
+ - unzip 
+
+write_files:
+  - path: /etc/profile.d/custom.sh
+    content: |
+      #!/bin/bash
+      export SRC_DIR="/usr/src"
+      export JAVA_HOME="/usr/lib/jvm/java-1.8.0-amazon-corretto"
+      export JDK_HOME="/usr/lib/jvm/java-1.8.0-amazon-corretto"
+      export JRE_HOME="/usr/lib/jvm/java-1.8.0-amazon-corretto/jre"
+      export MAVEN_HOME="/opt/maven"
+      export MAVEN_VERSION=3.6.3
+      export MAVEN_DOWNLOAD_SHA512="c35a1803a6e70a126e80b2b3ae33eed961f83ed74d18fcd16909b2d44d7dada3203f1ffe726c17ef8dcca2dcaa9fca676987befeadc9b9f759967a8cb77181c0"
+      export MAVEN_CONFIG_HOME="/root/.m2"
+      export INSTALLED_GRADLE_VERSIONS="4.10.3 5.6.4"
+      export PATH="${JAVA_HOME}/bin:${PATH}"
+    append: true
+    owner: root:root
+    permissions: '0755'
+
+  - content: |-
+      #!/bin/bash
+      set -ex \
+      apt-get update \
+      && apt-get install -y software-properties-common apt-utils \
+      && wget -O- https://apt.corretto.aws/corretto.key | apt-key add - \
+      && add-apt-repository 'deb https://apt.corretto.aws stable main' \
+      && apt-get update \
+      && apt-get install -y java-1.8.0-amazon-corretto-jdk \
+      && apt-get install -y --no-install-recommends ca-certificates-java \
+      && update-ca-certificates -f \
+      && dpkg --add-architecture i386 \
+      && apt-get update \
+      && apt-get install -y --force-yes libc6-i386 lib32stdc++6 lib32gcc1 lib32ncurses5 lib32z1 libqt5widgets5
+    owner: root:root
+    path: /opt/scripts/install_java.sh
+    permissions: '0755'
+
+  - content: |-
+      #!/bin/bash
+      set -ex \
+      # Install Maven
+      MAVEN_HOME="/opt/maven"
+      MAVEN_VERSION=3.6.3
+      MAVEN_DOWNLOAD_SHA512="c35a1803a6e70a126e80b2b3ae33eed961f83ed74d18fcd16909b2d44d7dada3203f1ffe726c17ef8dcca2dcaa9fca676987befeadc9b9f759967a8cb77181c0"
+      MAVEN_CONFIG_HOME="/root/.m2"
+      mkdir -p $MAVEN_HOME \
+      && curl -LSso /var/tmp/apache-maven-$MAVEN_VERSION-bin.tar.gz https://apache.org/dist/maven/maven-3/$MAVEN_VERSION/binaries/apache-maven-$MAVEN_VERSION-bin.tar.gz \
+      && echo "$MAVEN_DOWNLOAD_SHA512 /var/tmp/apache-maven-$MAVEN_VERSION-bin.tar.gz" | sha512sum -c - \
+      && tar xzvf /var/tmp/apache-maven-$MAVEN_VERSION-bin.tar.gz -C $MAVEN_HOME --strip-components=1 \
+      && rm /var/tmp/apache-maven-$MAVEN_VERSION-bin.tar.gz \
+      && update-alternatives --install /usr/bin/mvn mvn /opt/maven/bin/mvn 10000 \
+      && mkdir -p $MAVEN_CONFIG_HOME 
+    owner: root:root
+    path: /opt/scripts/install_maven.sh
+    permissions: '0755'
+
+  - content: |-
+      #!/bin/bash
+      set -ex \
+      apt-get update \
+      && curl https://get.docker.com | sudo bash \
+      && usermod -aG docker ubuntu \
+      && curl -L "https://github.com/docker/compose/releases/download/1.27.4/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose \
+      && chmod +x /usr/local/bin/docker-compose
+    owner: root:root
+    path: /opt/scripts/install_docker.sh
+    permissions: '0755'
+
+bootcmd:
+  - mkdir -p /opt/scripts
+  - echo "net.ipv6.conf.all.disable_ipv6=1" >> /etc/sysctl.conf
+  - echo "net.ipv6.conf.default.disable_ipv6=1" >> /etc/sysctl.conf
+  - sysctl -p
+
+runcmd:
+ - echo "source /etc/profile.d/custom.sh" >> /home/ubuntu/.bashrc
+ - chown ubuntu:ubuntu /home/ubuntu/.bashrc
+ - apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys 3FA7E0328081BFF6A14DA29AA6A19B38D3D831EF
+ - /opt/scripts/install_java.sh
+ - /opt/scripts/install_maven.sh
+
