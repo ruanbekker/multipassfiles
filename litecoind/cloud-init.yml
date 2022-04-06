@@ -1,0 +1,110 @@
+#cloud-config
+groups:
+  - mpusers
+
+users:
+  - default
+  - name: ubuntu
+    groups: mpusers
+    sudo:  ALL=(ALL) NOPASSWD:ALL
+    ssh_authorized_keys:
+      - ssh-rsa Ax= ruan@localhost
+
+package_update: true
+
+packages:
+ - apt-transport-https
+ - gnupg
+ - ca-certificates
+ - wget
+ - curl
+ - apt-utils
+ - net-tools
+
+write_files:
+  - path: /opt/scripts/install_litecoind.sh
+    content: |-
+      #!/bin/bash
+      set -x
+      apt update 
+      mkdir -p /blockchain/litecoin/data
+      mkdir -p /blockchain/litecoin/scripts
+      mkdir -p /usr/local/litecoin/0.18.1/bin
+      mkdir -p /home/crypto/.litecoin
+      mkdir -p /etc/litecoin
+      mkdir -p /var/log/litecoin
+      touch /var/log/litecoin/wallet-notify.log
+      cd /tmp
+      wget https://download.litecoin.org/litecoin-0.18.1/linux/litecoin-0.18.1-x86_64-linux-gnu.tar.gz
+      tar -xf litecoin-0.18.1-x86_64-linux-gnu.tar.gz
+      mv litecoin-0.18.1/bin/litecoin* /usr/local/litecoin/0.18.1/bin/
+      rm -f litecoin-0.18.1-x86_64-linux-gnu.tar.gz
+      ln -s /usr/local/litecoin/0.18.1 /usr/local/litecoin/current
+      ln -s /etc/litecoin/litecoin-testnet.conf /home/crypto/.litecoin/litecoin.conf
+      chown -R crypto:crypto /blockchain/litecoin
+      chown -R crypto:crypto /home/crypto
+      chown -R crypto:crypto /etc/litecoin
+      chown -R crypto:crypto /var/log/litecoin
+    owner: root:root
+    permissions: '0755'
+
+  - path: /etc/litecoin/litecoin-testnet.conf
+    content: |-
+      datadir=/blockchain/litecoin/data
+      printtoconsole=1
+      onlynet=ipv4
+      rpcallowip=127.0.0.1
+      rpcuser=user
+      rpcpassword=pass
+      rpcclienttimeout=300
+      testnet=1
+      prune=2500
+      walletnotify=/blockchain/litecoin/scripts/notify.sh %s %w
+      [test]
+      rpcbind=127.0.0.1
+      rpcport=19332
+    owner: root:root
+    permissions: '0644'
+
+  - path: /blockchain/litecoin/scripts/notify.sh
+    content: |-
+      #!/usr/bin/env bash
+      echo "[$(date +%FT%T)] $1 $2" >> /var/log/litecoin/wallet-notify.log
+    owner: crypto:crypto
+    permissions: '0755'
+
+  - path: /etc/systemd/system/litecoind.service
+    content: |-
+      [Unit]
+      Description=Litecoin Core Testnet
+      After=network.target
+      [Service]
+      User=crypto
+      Group=crypto
+      WorkingDirectory=/blockchain/litecoin/data
+      Type=simple
+      ExecStart=/usr/local/litecoin/current/bin/litecoind -conf=/home/crypto/.litecoin/litecoin.conf
+      [Install]
+      WantedBy=multi-user.target
+    owner: root:root
+    permissions: '0644'
+
+  - path: /etc/profile.d/litecoind.sh
+    content: |-
+      export PATH=$PATH:/usr/local/litecoin/current/bin
+    owner: root:root
+    permissions: '0755'
+
+  - path: /usr/bin/test_litecoin.sh
+    content: |-
+      curl -s -u "user:pass" -d '{"jsonrpc": "1.0", "id": "curl", "method": "getblockchaininfo", "params": []}' -H 'content-type: text/plain;' http://127.0.0.1:19332/  | python3 -m json.tool
+    owner: root:root
+    permissions: '0755'
+
+bootcmd:
+  - mkdir -p /opt/scripts
+  - useradd -s /bin/bash -m crypto
+runcmd:
+  - /opt/scripts/install_litecoind.sh
+  - systemctl daemon-reload
+  - systemctl restart litecoind
