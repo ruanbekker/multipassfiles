@@ -1,0 +1,305 @@
+#cloud-config
+groups:
+  - mpusers
+
+users:
+  - default
+  - name: ubuntu
+    groups: mpusers
+    sudo:  ALL=(ALL) NOPASSWD:ALL
+    ssh_authorized_keys:
+      - ssh-rsa +replaceme+ me@localhost
+
+package_update: true
+
+packages:
+ - apt-transport-https
+ - gnupg
+ - ca-certificates
+ - wget
+ - curl
+ - apt-utils
+ - net-tools
+ - python3.8
+ - python3.8-dev
+ - python3-pip
+ - libffi-dev 
+ - libkrb5-dev 
+ - libsasl2-dev 
+ - libssl-dev 
+ - libffi-dev 
+ - build-essential 
+ - libblas-dev 
+ - liblapack-dev 
+ - libpq-dev 
+ - git
+ #- default-mysql-client 
+ #- default-libmysqlclient-dev 
+ - postgresql 
+ - postgresql-contrib
+ - redis-server
+ - apt-utils 
+ - curl 
+ - rsync 
+ - netcat 
+ - locales
+
+write_files:
+  - content: |
+      #!/usr/bin/env bash
+      export AIRFLOW_HOME=/usr/local/airflow
+      export PATH=$PATH:${AIRFLOW_HOME}/.local/bin
+      export AIRFLOW__WEBSERVER__UPDATE_FAB_PERMS=True
+      export AIRFLOW__CORE__FERNET_KEY=hpDX91iogoIhCu6YAxJONYA7ltfyVvidVDV1oM6sVVo=
+      export AIRFLOW__WEBSERVER__RBAC=True
+      export AIRFLOW__DATABASE__SQL_ALCHEMY_CONN="postgresql+psycopg2://airflow:airflow@127.0.0.1:5432/airflow"
+      export AIRFLOW__CORE__EXECUTOR=CeleryExecutor
+      export AIRFLOW__CELERY__RESULT_BACKEND=db+postgresql://airflow:airflow@127.0.0.1/airflow
+      export AIRFLOW__CELERY__BROKER_URL=redis://127.0.0.1:6379/0
+      export AIRFLOW__CORE__LOAD_EXAMPLES=False
+    path: /etc/profile.d/airflow.sh
+    owner: root:root
+    permissions: '0755'
+
+  - content: |
+      PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/airflow/.local/bin
+      AIRFLOW_HOME=/usr/local/airflow
+      AIRFLOW__WEBSERVER__UPDATE_FAB_PERMS=True
+      AIRFLOW__CORE__FERNET_KEY=hpDX91iogoIhCu6YAxJONYA7ltfyVvidVDV1oM6sVVo=
+      AIRFLOW__WEBSERVER__RBAC=True
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN="postgresql+psycopg2://airflow:airflow@127.0.0.1:5432/airflow"
+      AIRFLOW__CORE__EXECUTOR=CeleryExecutor
+      AIRFLOW__CELERY__RESULT_BACKEND=db+postgresql://airflow:airflow@127.0.0.1/airflow
+      AIRFLOW__CELERY__BROKER_URL=redis://127.0.0.1:6379/0
+      AIRFLOW__CORE__LOAD_EXAMPLES=False
+    path: /etc/airflow/env
+    owner: root:root
+    permissions: '0644'
+
+  - content: |
+      [Unit]
+      Description=airflow-webserver
+      Wants=network-online.target
+      After=network-online.target
+      StartLimitIntervalSec=500
+      StartLimitBurst=5
+
+      [Service]
+      User=airflow
+      Group=airflow
+      Restart=on-failure
+      RestartSec=5s
+      EnvironmentFile=/etc/airflow/env
+      WorkingDirectory=/usr/local/airflow
+      ExecStart=/usr/local/airflow/.local/bin/airflow webserver
+
+      [Install]
+      WantedBy=multi-user.target
+    path: /etc/systemd/system/airflow-webserver.service
+    owner: root:root
+    permissions: '0644'
+
+  - content: |
+      [Unit]
+      Description=airflow-scheduler
+      Wants=network-online.target
+      After=network-online.target
+      StartLimitIntervalSec=500
+      StartLimitBurst=5
+
+      [Service]
+      User=airflow
+      Group=airflow
+      Restart=on-failure
+      RestartSec=5s
+      EnvironmentFile=/etc/airflow/env
+      WorkingDirectory=/usr/local/airflow
+      ExecStart=/usr/local/airflow/.local/bin/airflow scheduler
+
+      [Install]
+      WantedBy=multi-user.target
+    path: /etc/systemd/system/airflow-scheduler.service
+    owner: root:root
+    permissions: '0644'
+
+  - content: |
+      [Unit]
+      Description=airflow-worker
+      Wants=network-online.target
+      After=network-online.target
+      StartLimitIntervalSec=500
+      StartLimitBurst=5
+
+      [Service]
+      User=airflow
+      Group=airflow
+      Restart=on-failure
+      RestartSec=5s
+      EnvironmentFile=/etc/airflow/env
+      WorkingDirectory=/usr/local/airflow
+      ExecStart=/usr/local/airflow/.local/bin/airflow celery worker
+
+      [Install]
+      WantedBy=multi-user.target
+    path: /etc/systemd/system/airflow-worker.service
+    owner: root:root
+    permissions: '0644'
+
+  - content: |-
+      #!/usr/bin/env bash
+      set -x
+      ln -sf /usr/bin/python3 /usr/bin/python
+      sed -i 's/^# en_US.UTF-8 UTF-8$/en_US.UTF-8 UTF-8/g' /etc/locale.gen
+      locale-gen && update-locale
+      export LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8
+      useradd -ms /bin/bash -d /usr/local/airflow airflow
+      mkdir -p /usr/local/airflow/dags
+      chown -R airflow:airflow /usr/local/airflow/dags
+    path: /opt/scripts/prepare.sh
+    owner: root:root
+    permissions: '0755'
+
+  - content: |-
+      #!/usr/bin/env bash
+      export AIRFLOW_VERSION=2.3.0
+      export PYTHON_VERSION="$(python3 --version | cut -d " " -f 2 | cut -d "." -f 1-2)"
+      python3 -m pip install --upgrade --no-warn-script-location setuptools wheel testresources toolz
+      python3 -m pip install --user --no-warn-script-location apache-airflow[async,aws,celery,crypto,jdbc,postgres,password]==${AIRFLOW_VERSION} --constraint "https://raw.githubusercontent.com/apache/airflow/constraints-${AIRFLOW_VERSION}/constraints-${PYTHON_VERSION}.txt"
+      python3 -m pip install --user redis
+    path: /opt/scripts/install_airflow.sh
+    owner: root:root
+    permissions: '0755'
+
+  - content: |-
+      #!/usr/bin/env bash
+      if [ "$(whoami)" != "airflow" ]
+        then 
+          set -x 
+          echo "airflow user should be running this"
+          exit 1 
+      fi
+      airflow db init
+      airflow db upgrade
+      airflow users create --username admin --firstname airflow --lastname admin --email admin@localhost --role Admin --password password 
+    
+    path: /opt/scripts/airflow_initial_setup.sh
+    owner: root:root
+    permissions: '0755'
+
+  - content: |-
+      from airflow import DAG
+      from airflow.operators.bash_operator import BashOperator
+      from datetime import datetime, timedelta
+
+      default_args = {
+          'owner': 'admin',
+          'start_date': datetime(2022, 6, 16),
+          'depends_on_past': False,
+          'email': ['admin@localhost'],
+          'email_on_failure': False,
+          'email_on_retry': False,
+          'retries': 1,
+          'retry_delay': timedelta(minutes=5),
+          # 'queue': 'bash_queue',
+          # 'pool': 'backfill',
+          # 'priority_weight': 10,
+          # 'end_date': datetime(2021, 7, 29),
+      }
+
+      dag = DAG('bash_example_dag', default_args=default_args, schedule_interval=timedelta(1))
+
+      # t1, t2 and t3 are examples of tasks created by instantiating operators
+      t1 = BashOperator(task_id='print_date', bash_command='date', dag=dag)
+      t2 = BashOperator(task_id='sleep', bash_command='sleep 5', retries=3, dag=dag)
+
+      templated_command = """
+          {% for i in range(5) %}
+              echo "{{ ds }}"
+              echo "{{ macros.ds_add(ds, 7)}}"
+              echo "{{ params.my_param }}"
+          {% endfor %}
+      """
+
+      t3 = BashOperator(
+          task_id="templated",
+          bash_command=templated_command,
+          params={"my_param": "Parameter I passed in"},
+          dag=dag,
+      )
+
+      t2.set_upstream(t1)
+      t3.set_upstream(t1)
+    path: /opt/scripts/bashdag.py
+    owner: ubuntu:ubuntu
+    permissions: '0644'
+
+  - content: |-
+      ##  Getting info from config:
+      airflow config get-value database sql_alchemy_conn
+      airflow config get-value core executor
+
+      ## Using mysql as the sql_alchemy connection
+      sql_alchemy_conn = mysql+mysqlconnector://airflow:airflow@localhost:3306/airflow_db
+      https://airflow.apache.org/docs/apache-airflow/2.3.0/howto/set-up-database.html
+
+      ## Using postgres as the sql_alchemy connection
+      sql_alchemy_conn = postgresql+psycopg2://airflow:airflow@127.0.0.1:5432/airflow
+      apt install postgresql postgresql-contrib -y
+      sudo -u postgres bash -c "createdb airflow"
+      sudo -u postgres bash -c "createuser -s -i -d -r -l -w airflow"
+      sudo -u postgres bash -c "psql -c \"ALTER ROLE airflow WITH PASSWORD 'airflow';\""
+      https://airflow.apache.org/docs/apache-airflow/2.3.0/howto/set-up-database.html
+
+      ## Create a fernet key
+      >>> from cryptography.fernet import Fernet
+      >>> fernet_key = Fernet.generate_key()
+      >>> print(fernet_key.decode())
+      hpDX91iogoIhCu6YAxJONYA7ltfyVvidVDV1oM6sVVo=
+
+      Env var export AIRFLOW__CORE__FERNET_KEY=your_fernet_key
+      https://airflow.apache.org/docs/apache-airflow/2.3.0/security/secrets/fernet.html
+      
+      ## Initial setup
+      airflow db init
+      airflow db upgrade
+      airflow users create -u admin -f airflow -l admin -e airflow@localhost -r Admin -p password
+
+      ## Executors
+      sudo apt install redis-server -y
+
+      [core]
+      executor = CeleryExecutor
+      [celery]
+      broker_url = redis://$REDIS_HOST:$REDIS_PORT/1
+      result_backend = db+postgresql://airflow:airflow@127.0.0.1:5432/airflow
+      https://airflow.apache.org/docs/apache-airflow/2.3.0/executor/index.html#executor
+
+      ## Starting services
+      airflow webserver
+      airflow scheduler
+      airflow flower
+
+      ## Documentation
+      https://airflow.apache.org/docs/apache-airflow/2.3.0/index.html
+      https://airflow.apache.org/docs/apache-airflow/2.3.0/configurations-ref.html
+      https://airflow.apache.org/docs/apache-airflow/2.3.0/howto/set-up-database.html
+      https://github.com/apache/airflow/blob/2.3.0/airflow/config_templates/default_airflow.cfg
+      https://www.linkedin.com/pulse/installation-configuration-apacheairflow-postgres-18-ali-bin-akhtar
+    path: /opt/docs/airflow-usage.md
+    owner: ubuntu:ubuntu
+    permissions: '0644'
+
+bootcmd:
+  - mkdir -p /opt/scripts /opt/docs /etc/airflow
+
+runcmd:
+  - /opt/scripts/prepare.sh
+  - sudo -H -u airflow bash -c '/opt/scripts/install_airflow.sh' >> /tmp/install.log
+  - cp /opt/scripts/airflow_initial_setup.sh /usr/local/airflow/initial_setup.sh
+  - cp /opt/scripts/bashdag.py /usr/local/airflow/dags/bashdag.py
+  - chown -R airflow:airflow /usr/local/airflow
+  - sudo -u postgres bash -c "createdb airflow"
+  - sudo -u postgres bash -c "createuser -s -i -d -r -l -w airflow"
+  - sudo -u postgres bash -c "psql -c \"ALTER ROLE airflow WITH PASSWORD 'airflow';\""
+  - systemctl daemon-reload
+  #- sudo -H -u airflow bash -c '/opt/scripts/airflow_initial_setup.sh' >> /tmp/install.log
