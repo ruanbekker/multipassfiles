@@ -1,0 +1,28 @@
+#cloud-config
+groups:
+  - mpusers
+
+users:
+  - default
+  - name: ubuntu
+    groups: mpusers
+    sudo:  ALL=(ALL) NOPASSWD:ALL
+    #ssh_authorized_keys:
+    #  - ssh-rsa __DEFAULT__
+    
+package_update: true
+
+packages:
+ - apt-transport-https
+ - gnupg
+ - ca-certificates
+ - apt-utils
+ - net-tools
+ - redis-server
+ - netcat 
+ - locales
+
+runcmd:
+ - IP_ADDRESS=$(ifconfig $(route -n | grep UG | rev | awk '{print $1}' | rev) | grep -w inet | awk '{print $2}')
+ - sed -i "s/bind 127.0.0.1 ::1/bind 127.0.0.1 ${IP_ADDRESS}/g" /etc/redis/redis.conf
+ - systemctl restart redis
