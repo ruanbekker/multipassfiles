@@ -1,0 +1,36 @@
+#cloud-config
+groups:
+  - mpusers
+
+users:
+  - default
+  - name: ubuntu
+    groups: mpusers
+    sudo:  ALL=(ALL) NOPASSWD:ALL
+    #ssh_authorized_keys:
+    #  - ssh-rsa __DEFAULT__
+
+package_update: true
+
+packages:
+ - apt-transport-https
+ - gnupg
+ - ca-certificates
+ - apt-utils
+ - net-tools
+ - postgresql 
+ - postgresql-contrib
+ - curl 
+ - netcat 
+ - locales
+
+runcmd:
+  - sed -i 's/^# en_US.UTF-8 UTF-8$/en_US.UTF-8 UTF-8/g' /etc/locale.gen
+  - export LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8
+  - locale-gen && update-locale
+  - sed -i "s/#listen_addresses\ =\ 'localhost'/listen_addresses\ =\ '*'/g" /etc/postgresql/12/main/postgresql.conf ^C
+  - systemctl restart postgresql
+  - sleep 5
+  - sudo -u postgres bash -c "createdb airflow"
+  - sudo -u postgres bash -c "createuser -s -i -d -r -l -w airflow"
+  - sudo -u postgres bash -c "psql -c \"ALTER ROLE airflow WITH PASSWORD 'airflow';\""
