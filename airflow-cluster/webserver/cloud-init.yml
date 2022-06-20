@@ -1,0 +1,146 @@
+#cloud-config
+groups:
+  - mpusers
+
+users:
+  - default
+  - name: ubuntu
+    groups: mpusers
+    sudo:  ALL=(ALL) NOPASSWD:ALL
+    #ssh_authorized_keys:
+    #  - ssh-rsa __DEFAULT__ 
+     
+package_update: true
+
+packages:
+ - apt-transport-https
+ - gnupg
+ - ca-certificates
+ - wget
+ - curl
+ - apt-utils
+ - net-tools
+ - python3.8
+ - python3.8-dev
+ - python3-pip
+ - libffi-dev
+ - libkrb5-dev
+ - libsasl2-dev
+ - libssl-dev
+ - libffi-dev
+ - build-essential
+ - libblas-dev
+ - liblapack-dev
+ - libpq-dev
+ - git
+ - apt-utils
+ - curl
+ - rsync
+ - netcat
+ - locales
+
+write_files:
+  - content: |
+      #!/usr/bin/env bash
+      export AIRFLOW_HOME=/usr/local/airflow
+      export PATH=$PATH:${AIRFLOW_HOME}/.local/bin
+      export AIRFLOW__WEBSERVER__UPDATE_FAB_PERMS=True
+      export AIRFLOW__CORE__FERNET_KEY=hpDX91iogoIhCu6YAxJONYA7ltfyVvidVDV1oM6sVVo=
+      export AIRFLOW__WEBSERVER__RBAC=True
+      export AIRFLOW__DATABASE__SQL_ALCHEMY_CONN="postgresql+psycopg2://airflow:airflow@192.168.64.38:5432/airflow"
+      export AIRFLOW__CORE__EXECUTOR=CeleryExecutor
+      export AIRFLOW__CELERY__RESULT_BACKEND=db+postgresql://airflow:airflow@192.168.64.38/airflow
+      export AIRFLOW__CELERY__BROKER_URL=redis://192.168.64.39:6379/0
+      export AIRFLOW__CORE__LOAD_EXAMPLES=False
+    path: /etc/profile.d/airflow.sh
+    owner: root:root
+    permissions: '0755'
+
+  - content: |
+      PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/airflow/.local/bin
+      AIRFLOW_HOME=/usr/local/airflow
+      AIRFLOW__WEBSERVER__UPDATE_FAB_PERMS=True
+      AIRFLOW__CORE__FERNET_KEY=hpDX91iogoIhCu6YAxJONYA7ltfyVvidVDV1oM6sVVo=
+      AIRFLOW__WEBSERVER__RBAC=True
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN="postgresql+psycopg2://airflow:airflow@192.168.64.38:5432/airflow"
+      AIRFLOW__CORE__EXECUTOR=CeleryExecutor
+      AIRFLOW__CELERY__RESULT_BACKEND=db+postgresql://airflow:airflow@192.168.64.38/airflow
+      AIRFLOW__CELERY__BROKER_URL=redis://192.168.64.39:6379/0
+      AIRFLOW__CORE__LOAD_EXAMPLES=False
+    path: /etc/airflow/env
+    owner: root:root
+    permissions: '0644'
+
+  - content: |
+      [Unit]
+      Description=airflow-webserver
+      Wants=network-online.target
+      After=network-online.target
+      StartLimitIntervalSec=500
+      StartLimitBurst=5
+
+      [Service]
+      User=airflow
+      Group=airflow
+      Restart=on-failure
+      RestartSec=5s
+      EnvironmentFile=/etc/airflow/env
+      WorkingDirectory=/usr/local/airflow
+      ExecStart=/usr/local/airflow/.local/bin/airflow webserver
+
+      [Install]
+      WantedBy=multi-user.target
+    path: /etc/systemd/system/airflow-webserver.service
+    owner: root:root
+    permissions: '0644'
+
+  - content: |-
+      #!/usr/bin/env bash
+      set -x
+      ln -sf /usr/bin/python3 /usr/bin/python
+      sed -i 's/^# en_US.UTF-8 UTF-8$/en_US.UTF-8 UTF-8/g' /etc/locale.gen
+      locale-gen && update-locale
+      export LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8
+      useradd -ms /bin/bash -d /usr/local/airflow airflow
+      mkdir -p /usr/local/airflow/dags
+      chown -R airflow:airflow /usr/local/airflow/dags
+    path: /opt/scripts/prepare.sh
+    owner: root:root
+    permissions: '0755'
+
+  - content: |-
+      #!/usr/bin/env bash
+      export AIRFLOW_VERSION=2.3.0
+      export PYTHON_VERSION="$(python3 --version | cut -d " " -f 2 | cut -d "." -f 1-2)"
+      python3 -m pip install --upgrade --no-warn-script-location setuptools wheel testresources toolz
+      python3 -m pip install --user --no-warn-script-location apache-airflow[async,aws,celery,crypto,jdbc,postgres,password]==${AIRFLOW_VERSION} --constraint "https://raw.githubusercontent.com/apache/airflow/constraints-${AIRFLOW_VERSION}/constraints-${PYTHON_VERSION}.txt"
+      python3 -m pip install --user redis
+    path: /opt/scripts/install_airflow.sh
+    owner: root:root
+    permissions: '0755'
+
+  - content: |-
+      #!/usr/bin/env bash
+      if [ "$(whoami)" != "airflow" ]
+        then
+          set -x
+          echo "airflow user should be running this"
+          exit 1
+      fi
+      airflow db init
+      airflow db upgrade
+      airflow users create --username admin --firstname airflow --lastname admin --email admin@localhost --role Admin --password password
+
+    path: /opt/scripts/airflow_initial_setup.sh
+    owner: root:root
+    permissions: '0755'
+
+bootcmd:
+  - mkdir -p /opt/scripts /opt/docs /etc/airflow
+
+runcmd:
+  - /opt/scripts/prepare.sh
+  - sudo -H -u airflow bash -c '/opt/scripts/install_airflow.sh' >> /tmp/install.log
+  - cp /opt/scripts/airflow_initial_setup.sh /usr/local/airflow/initial_setup.sh
+  - chown -R airflow:airflow /usr/local/airflow
+  - systemctl daemon-reload
