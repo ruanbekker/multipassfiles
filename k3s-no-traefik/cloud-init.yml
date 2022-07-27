@@ -29,8 +29,8 @@ write_files:
       #!/usr/bin/env bash
       set -x
       apt update
-      export K3S_VERSION=v1.23.6+k3s1
-      curl -sfL https://get.k3s.io | K3S_KUBECONFIG_MODE="644" INSTALL_K3S_VERSION=${K3S_VERSION} INSTALL_K3S_EXEC="server --no-deploy=traefik" sh -s -
+      export K3S_VERSION=v1.24.3+k3s1
+      curl -sfL https://get.k3s.io | K3S_KUBECONFIG_MODE="644" INSTALL_K3S_VERSION=${K3S_VERSION} INSTALL_K3S_EXEC="--disable=traefik" sh -s -
       mkdir -p /home/ubuntu/.kube
       cp /etc/rancher/k3s/k3s.yaml /home/ubuntu/.kube/config
       chown ubuntu:ubuntu /home/ubuntu/.kube/config
@@ -47,7 +47,7 @@ write_files:
     permissions: '0755'
   - content: |
       KUBECONFIG="/home/ubuntu/.kube/config"
-      K3S_VERSION="v1.23.6+k3s1"
+      K3S_VERSION="v1.24.3+k3s1"
     path: /etc/environment
     append: true
 runcmd:
