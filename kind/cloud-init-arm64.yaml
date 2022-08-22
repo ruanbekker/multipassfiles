@@ -1,0 +1,52 @@
+#cloud-config
+groups:
+  - mpusers
+
+users:
+  - default
+  - name: ubuntu
+    groups: mpusers
+    sudo:  ALL=(ALL) NOPASSWD:ALL
+    ssh_authorized_keys:
+      - REPLACEME_SSH_PUBLIC_KEY
+      
+package_update: true
+
+packages:
+  - apt-transport-https
+  - gnupg
+  - ca-certificates
+  - wget
+  - curl
+  - apt-utils
+  - net-tools
+
+bootcmd:
+  - mkdir -p /opt/scripts
+
+write_files:
+  - content: |-
+      #!/usr/bin/env bash
+      set -x
+      apt update
+      export ARCH=arm64
+      curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.14.0/kind-linux-$ARCH
+      sudo install -o root -g root -m 0755 kind /usr/local/bin/kind
+      curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/$ARCH/kubectl"
+      sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
+      curl -sfL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+      curl https://raw.githubusercontent.com/ruanbekker/scripts/master/setup-docker.sh | bash
+      mkdir -p /home/ubuntu/.kube
+      chown ubuntu:ubuntu /home/ubuntu/.kube
+      if [ -f "/home/ubuntu/.kube/config" ]; then chmod 0400 /home/ubuntu/.kube/config; fi
+    owner: root:root
+    path: /opt/scripts/install_tools.sh
+    permissions: '0755'
+
+  - content: |
+      KUBECONFIG="/home/ubuntu/.kube/config"
+    path: /etc/environment
+    append: true
+
+runcmd:
+  - /opt/scripts/install_tools.sh >> /var/log/install-tools.log
