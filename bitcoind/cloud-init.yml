@@ -1,0 +1,110 @@
+#cloud-config
+groups:
+  - mpusers
+
+users:
+  - default
+  - name: ubuntu
+    groups: mpusers
+    sudo:  ALL=(ALL) NOPASSWD:ALL
+    ssh_authorized_keys:
+      - ssh-rsa Ax= ruan@localhost
+
+package_update: true
+
+packages:
+ - apt-transport-https
+ - gnupg
+ - ca-certificates
+ - wget
+ - curl
+ - apt-utils
+ - net-tools
+
+write_files:
+  - path: /opt/scripts/install_bitcoind.sh
+    permissions: '0755'
+    owner: root:root
+    content: |-
+      #!/bin/bash
+      set -x
+      apt update
+      mkdir -p /blockchain/bitcoin/data
+      mkdir -p /blockchain/bitcoin/scripts
+      mkdir -p /usr/local/bitcoin/25.0/bin
+      mkdir -p /home/crypto/.bitcoin
+      mkdir -p /etc/bitcoin
+      mkdir -p /var/log/bitcoin
+      touch /var/log/bitcoin/wallet-notify.log
+      cd /tmp
+      wget https://bitcoin.org/bin/bitcoin-core-25.0/bitcoin-25.0-x86_64-linux-gnu.tar.gz
+      tar -xf bitcoin-25.0-x86_64-linux-gnu.tar.gz
+      mv bitcoin-*/bin/bitcoin* /usr/local/bitcoin/25.0/bin/
+      rm -f bitcoin-25.0-x86_64-linux-gnu.tar.gz
+      ln -s /usr/local/bitcoin/25.0 /usr/local/bitcoin/current
+      ln -s /etc/bitcoin/bitcoin-testnet.conf /home/crypto/.bitcoin/bitcoin.conf
+      chown -R crypto:crypto /blockchain/bitcoin
+      chown -R crypto:crypto /home/crypto
+      chown -R crypto:crypto /etc/bitcoin
+      chown -R crypto:crypto /var/log/bitcoin
+
+  - path: /etc/bitcoin/bitcoin-testnet.conf
+    permissions: '0644'
+    owner: root:root
+    content: |-
+      datadir=/blockchain/bitcoin/data
+      printtoconsole=1
+      onlynet=ipv4
+      rpcallowip=0.0.0.0
+      rpcuser=user
+      rpcpassword=pass
+      rpcclienttimeout=300
+      testnet=1
+      prune=2500
+      walletnotify=/blockchain/bitcoin/scripts/notify.sh %s %w
+      [test]
+      rpcbind=0.0.0.0
+      rpcport=18332
+
+  - path: /blockchain/bitcoin/scripts/notify.sh
+    content: |-
+      #!/usr/bin/env bash
+      echo "[$(date +%FT%T)] $1 $2" >> /var/log/bitcoin/wallet-notify.log
+    owner: crypto:crypto
+    permissions: '0755'
+
+  - path: /etc/systemd/system/bitcoind.service
+    content: |-
+      [Unit]
+      Description=Bitcoin Core Testnet
+      After=network.target
+      [Service]
+      User=crypto
+      Group=crypto
+      WorkingDirectory=/blockchain/bitcoin/data
+      Type=simple
+      ExecStart=/usr/local/bitcoin/current/bin/bitcoind -conf=/home/crypto/.bitcoin/bitcoin.conf
+      [Install]
+      WantedBy=multi-user.target
+    owner: root:root
+    permissions: '0644'
+
+  - path: /etc/profile.d/bitcoind.sh
+    content: |-
+      export PATH=$PATH:/usr/local/bitcoin/current/bin
+    owner: root:root
+    permissions: '0755'
+
+  - path: /usr/bin/test_bitcoin.sh
+    content: |-
+      curl -s -u "user:pass" -d '{"jsonrpc": "1.0", "id": "curl", "method": "getblockchaininfo", "params": []}' -H 'content-type: text/plain;' http://127.0.0.1:18332/  | python3 -m json.tool
+    owner: root:root
+    permissions: '0755'
+
+bootcmd:
+  - mkdir -p /opt/scripts
+  - useradd -s /bin/bash -m crypto || echo user already exists
+runcmd:
+  - /opt/scripts/install_bitcoind.sh
+  - systemctl daemon-reload
+  - systemctl restart bitcoind
